@@ -40,7 +40,7 @@ git fetch origin || log_error "Backend: error en git fetch"
 if [ "$(git rev-parse HEAD)" != "$(git rev-parse @{u})" ]; then
   log_info "Backend: cambios detectados, deteniendo Docker..."
   cd backend || exit
-  docker compose down >> "$LOGFILE" 2>&1 || log_error "Backend: error al detener Docker"
+  docker compose down >/dev/null 2>&1 || log_error "Backend: error al detener Docker"
   cd .. || exit
   
   log_info "Backend: haciendo pull..."
@@ -48,26 +48,26 @@ if [ "$(git rev-parse HEAD)" != "$(git rev-parse @{u})" ]; then
   
   cd backend || exit
   log_info "Backend: compilando proyecto..."
-  mvn compile -Dmaven.compiler.release=17 >> "$LOGFILE" 2>&1 || log_error "Backend: error en mvn compile"
+  mvn compile -Dmaven.compiler.release=17 -q >> "$LOGFILE" 2>&1 || log_error "Backend: error en mvn compile"
   cd .. || exit
   
   if command -v sonar-scanner >/dev/null 2>&1; then
-    log_info "Backend: ejecutando sonar-scanner..."
+    log_info "Backend: ejecutando análisis SonarQube..."
     sonar-scanner \
       -Dsonar.projectKey=uis-schedule-system-backend \
       -Dsonar.sources=backend/src/main/java \
       -Dsonar.java.binaries=backend/target/classes \
       -Dsonar.host.url=http://100.108.184.57:9000 \
-      -Dsonar.token=sqp_70792b2cb36159ac9409730b24fad9d5f6621f3c >> "$LOGFILE" 2>&1 || \
-      log_error "Backend: sonar-scanner finalizó con error."
+      -Dsonar.token=sqp_70792b2cb36159ac9409730b24fad9d5f6621f3c >/dev/null 2>&1 || \
+      log_error "Backend: error en análisis SonarQube"
   else
     log_error "Backend: sonar-scanner no está disponible; omitiendo análisis."
   fi
   
   cd backend || exit
   log_info "Backend: reconstruyendo y lanzando Docker..."
-  docker compose build >> "$LOGFILE" 2>&1 || log_error "Backend: error al construir Docker"
-  docker compose up -d >> "$LOGFILE" 2>&1 || log_error "Backend: error al lanzar Docker"
+  docker compose build --quiet >> "$LOGFILE" 2>&1 || log_error "Backend: error al construir Docker"
+  docker compose up -d --quiet-pull >> "$LOGFILE" 2>&1 || log_error "Backend: error al lanzar Docker"
   cd .. || exit
 fi
 
@@ -75,20 +75,20 @@ cd /home/dev/proyects/uis-schedule-system-frontend || exit
 git fetch origin || log_error "Frontend: error en git fetch"
 if [ "$(git rev-parse HEAD)" != "$(git rev-parse @{u})" ]; then
   log_info "Frontend: deteniendo Docker..."
-  docker compose down >> "$LOGFILE" 2>&1 || log_error "Frontend: error al detener Docker"
+  docker compose down --quiet >> "$LOGFILE" 2>&1 || log_error "Frontend: error al detener Docker"
   
   log_info "Frontend: haciendo pull..."
   git pull >> "$LOGFILE" 2>&1 || log_error "Frontend: error en git pull"
   
   log_info "Frontend: instalando dependencias..."
-  npm install >> "$LOGFILE" 2>&1 || log_error "Frontend: error en npm install"
+  npm install --silent >> "$LOGFILE" 2>&1 || log_error "Frontend: error en npm install"
   
   log_info "Frontend: compilando aplicación..."
-  npm run build >> "$LOGFILE" 2>&1 || log_error "Frontend: error en npm run build"
+  npm run build --silent >> "$LOGFILE" 2>&1 || log_error "Frontend: error en npm run build"
   
   log_info "Frontend: reconstruyendo y lanzando Docker..."
-  docker compose build >> "$LOGFILE" 2>&1 || log_error "Frontend: error al construir Docker"
-  docker compose up -d >> "$LOGFILE" 2>&1 || log_error "Frontend: error al lanzar Docker"
+  docker compose build --quiet >> "$LOGFILE" 2>&1 || log_error "Frontend: error al construir Docker"
+  docker compose up -d --quiet >> "$LOGFILE" 2>&1 || log_error "Frontend: error al lanzar Docker"
   
   # Ejecuta Sonar para actualizar información del proyecto en SonarQube
   # Intenta varias formas de ejecutar Sonar: sonar, sonar-scanner, o docker (fallback)
@@ -98,7 +98,7 @@ if [ "$(git rev-parse HEAD)" != "$(git rev-parse @{u})" ]; then
       sonar \
         -Dsonar.host.url=http://100.108.184.57:9000 \
         -Dsonar.token=sqp_e1d0355edd381d87168d228ac2338d133a5280a4 \
-        -Dsonar.projectKey=uis-schedule-system-frontend) >> "$LOGFILE" 2>&1 || \
+        -Dsonar.projectKey=uis-schedule-system-frontend) > /dev/null 2>&1 || \
       log_error "Frontend: 'sonar' finalizó con error."
   elif command -v sonar-scanner >/dev/null 2>&1; then
     log_info "Frontend: ejecutando 'sonar-scanner' (desde carpeta frontend)..."
@@ -106,7 +106,7 @@ if [ "$(git rev-parse HEAD)" != "$(git rev-parse @{u})" ]; then
       sonar-scanner \
         -Dsonar.host.url=http://100.108.184.57:9000 \
         -Dsonar.login=sqp_e1d0355edd381d87168d228ac2338d133a5280a4 \
-        -Dsonar.projectKey=uis-schedule-system-frontend) >> "$LOGFILE" 2>&1 || \
+        -Dsonar.projectKey=uis-schedule-system-frontend) > /dev/null 2>&1 || \
       log_error "Frontend: 'sonar-scanner' finalizó con error."
   elif command -v docker >/dev/null 2>&1; then
     log_info "Frontend: ejecutando Sonar con Docker (sonarsource/sonar-scanner-cli)..."
@@ -114,7 +114,7 @@ if [ "$(git rev-parse HEAD)" != "$(git rev-parse @{u})" ]; then
       docker run --rm -v "$PWD":/usr/src -w /usr/src sonarsource/sonar-scanner-cli \
         -Dsonar.host.url=http://100.108.184.57:9000 \
         -Dsonar.login=sqp_e1d0355edd381d87168d228ac2338d133a5280a4 \
-        -Dsonar.projectKey=uis-schedule-system-frontend) >> "$LOGFILE" 2>&1 || \
+        -Dsonar.projectKey=uis-schedule-system-frontend) > /dev/null 2>&1 || \
       log_error "Frontend: Sonar via Docker finalizó con error."
   else
     log_error "Frontend: ninguno de 'sonar', 'sonar-scanner' o 'docker' está disponible; omitiendo análisis."
