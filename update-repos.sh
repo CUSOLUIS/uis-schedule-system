@@ -40,7 +40,7 @@ git fetch origin || log_error "Backend: error en git fetch"
 if [ "$(git rev-parse HEAD)" != "$(git rev-parse @{u})" ]; then
   log_info "Backend: cambios detectados, deteniendo Docker..."
   cd backend || exit
-  docker-compose down >> "$LOGFILE" 2>&1 || log_error "Backend: error al detener Docker"
+  docker compose down >> "$LOGFILE" 2>&1 || log_error "Backend: error al detener Docker"
   cd .. || exit
   
   log_info "Backend: haciendo pull..."
@@ -66,16 +66,30 @@ if [ "$(git rev-parse HEAD)" != "$(git rev-parse @{u})" ]; then
   
   cd backend || exit
   log_info "Backend: reconstruyendo y lanzando Docker..."
-  docker-compose build >> "$LOGFILE" 2>&1 || log_error "Backend: error al construir Docker"
-  docker-compose up -d >> "$LOGFILE" 2>&1 || log_error "Backend: error al lanzar Docker"
+  docker compose build >> "$LOGFILE" 2>&1 || log_error "Backend: error al construir Docker"
+  docker compose up -d >> "$LOGFILE" 2>&1 || log_error "Backend: error al lanzar Docker"
   cd .. || exit
 fi
 
 cd /home/dev/proyects/uis-schedule-system-frontend || exit
 git fetch origin || log_error "Frontend: error en git fetch"
 if [ "$(git rev-parse HEAD)" != "$(git rev-parse @{u})" ]; then
-  log_info "Frontend: cambios detectados, haciendo pull..."
+  log_info "Frontend: deteniendo Docker..."
+  docker compose down >> "$LOGFILE" 2>&1 || log_error "Frontend: error al detener Docker"
+  
+  log_info "Frontend: haciendo pull..."
   git pull >> "$LOGFILE" 2>&1 || log_error "Frontend: error en git pull"
+  
+  log_info "Frontend: instalando dependencias..."
+  npm install >> "$LOGFILE" 2>&1 || log_error "Frontend: error en npm install"
+  
+  log_info "Frontend: compilando aplicación..."
+  npm run build >> "$LOGFILE" 2>&1 || log_error "Frontend: error en npm run build"
+  
+  log_info "Frontend: reconstruyendo y lanzando Docker..."
+  docker compose build >> "$LOGFILE" 2>&1 || log_error "Frontend: error al construir Docker"
+  docker compose up -d >> "$LOGFILE" 2>&1 || log_error "Frontend: error al lanzar Docker"
+  
   # Ejecuta Sonar para actualizar información del proyecto en SonarQube
   # Intenta varias formas de ejecutar Sonar: sonar, sonar-scanner, o docker (fallback)
   if command -v sonar >/dev/null 2>&1; then
