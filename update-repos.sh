@@ -38,12 +38,7 @@ log_error() {
 cd /home/dev/proyects/uis-schedule-system-backend || exit
 git fetch origin || log_error "Backend: error en git fetch"
 if [ "$(git rev-parse HEAD)" != "$(git rev-parse @{u})" ]; then
-  log_info "Backend: cambios detectados, deteniendo Docker..."
-  cd backend || exit
-  docker compose down >/dev/null 2>&1 || log_error "Backend: error al detener Docker"
-  cd .. || exit
-  
-  log_info "Backend: haciendo pull..."
+  log_info "Backend: cambios detectados, haciendo pull..."
   git pull >> "$LOGFILE" 2>&1 || log_error "Backend: error en git pull"
   
   cd backend || exit
@@ -64,19 +59,12 @@ if [ "$(git rev-parse HEAD)" != "$(git rev-parse @{u})" ]; then
     log_error "Backend: sonar-scanner no está disponible; omitiendo análisis."
   fi
   
-  cd backend || exit
-  log_info "Backend: reconstruyendo y lanzando Docker..."
-  docker compose build --quiet >> "$LOGFILE" 2>&1 || log_error "Backend: error al construir Docker"
-  docker compose up -d --quiet-pull >> "$LOGFILE" 2>&1 || log_error "Backend: error al lanzar Docker"
-  cd .. || exit
+  BACKEND_UPDATED=true
 fi
 
 cd /home/dev/proyects/uis-schedule-system-frontend || exit
 git fetch origin || log_error "Frontend: error en git fetch"
 if [ "$(git rev-parse HEAD)" != "$(git rev-parse @{u})" ]; then
-  log_info "Frontend: deteniendo Docker..."
-  docker compose down --quiet >> "$LOGFILE" 2>&1 || log_error "Frontend: error al detener Docker"
-  
   log_info "Frontend: haciendo pull..."
   git pull >> "$LOGFILE" 2>&1 || log_error "Frontend: error en git pull"
   
@@ -85,10 +73,6 @@ if [ "$(git rev-parse HEAD)" != "$(git rev-parse @{u})" ]; then
   
   log_info "Frontend: compilando aplicación..."
   npm run build --silent >> "$LOGFILE" 2>&1 || log_error "Frontend: error en npm run build"
-  
-  log_info "Frontend: reconstruyendo y lanzando Docker..."
-  docker compose build --quiet >> "$LOGFILE" 2>&1 || log_error "Frontend: error al construir Docker"
-  docker compose up -d --quiet >> "$LOGFILE" 2>&1 || log_error "Frontend: error al lanzar Docker"
   
   # Ejecuta Sonar para actualizar información del proyecto en SonarQube
   # Intenta varias formas de ejecutar Sonar: sonar, sonar-scanner, o docker (fallback)
@@ -119,6 +103,16 @@ if [ "$(git rev-parse HEAD)" != "$(git rev-parse @{u})" ]; then
   else
     log_error "Frontend: ninguno de 'sonar', 'sonar-scanner' o 'docker' está disponible; omitiendo análisis."
   fi
+  
+  FRONTEND_UPDATED=true
+fi
+
+# Si hubo cambios en backend o frontend, reconstruir y relanzar desde docker-compose principal
+if [ "$BACKEND_UPDATED" = true ] || [ "$FRONTEND_UPDATED" = true ]; then
+  cd /home/dev/proyects || exit
+  log_info "Reconstruyendo y relanzando contenedores desde docker-compose principal..."
+  docker-compose build --quiet >> "$LOGFILE" 2>&1 || log_error "Error al construir Docker desde compose principal"
+  docker-compose up -d --quiet-pull >> "$LOGFILE" 2>&1 || log_error "Error al lanzar Docker desde compose principal"
 fi
 
 if [ -n "$LOG_BUFFER" ]; then

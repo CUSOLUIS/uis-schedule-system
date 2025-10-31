@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   sonarqube:
     image: sonarqube:community
@@ -14,6 +12,7 @@ services:
       - sonarqube_data:/opt/sonarqube/data
       - sonarqube_extensions:/opt/sonarqube/extensions
       - sonarqube_logs:/opt/sonarqube/logs
+    restart: unless-stopped
 
   db:
     image: postgres:13
@@ -28,12 +27,79 @@ services:
       - postgresql_data:/var/lib/postgresql/data
     networks:
       - sonarnet
+    restart: unless-stopped
+
+  postgres:
+    image: postgres:16
+    container_name: postgres
+    environment:
+      POSTGRES_DB: scheduleDB
+      POSTGRES_USER: cusolOficial
+      POSTGRES_PASSWORD: A4352k#_M
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    networks:
+      - spring-network
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U cusolOficial -d scheduleDB" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  backend-spring-api:
+    image: spring-api-image
+    container_name: backend-spring-api-container
+    build:
+      context: ./uis-schedule-system-backend/backend
+      dockerfile: Dockerfile
+    ports:
+      - "8080:8080"
+    environment:
+      - SPRING_PROFILE=prod
+      - DB_HOST=postgres
+    networks:
+      - spring-network
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: ./uis-schedule-system-frontend
+      dockerfile: Dockerfile
+    container_name: uis-schedule-frontend
+    ports:
+      - "80:80"
+    networks:
+      - spring-network
+    depends_on:
+      - backend-spring-api
+    restart: unless-stopped
+
+  frontend-dev:
+    image: node:20-alpine
+    container_name: uis-schedule-frontend-dev
+    network_mode: host
+    working_dir: /app
+    command: sh -c "npm install && npm run start -- --host 0.0.0.0"
+    volumes:
+      - ./uis-schedule-system-frontend:/app
+    environment:
+      - NODE_ENV=development
+    restart: unless-stopped
 
 volumes:
   sonarqube_data:
   sonarqube_extensions:
   sonarqube_logs:
   postgresql_data:
+  postgres-data:
+
 
 networks:
   sonarnet:
+  spring-network:
