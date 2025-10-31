@@ -1,0 +1,6 @@
+[submodule "uis-schedule-system-backend"]
+	path = uis-schedule-system-backend
+	url = git@github.com-uis-schedule-system-backend:CUSOLUIS/uis-schedule-system-backend.git
+[submodule "uis-schedule-system-frontend"]
+	path = uis-schedule-system-frontend
+	url = git@github.com-uis-schedule-system-frontend:CUSOLUIS/uis-schedule-system-frontend.git
