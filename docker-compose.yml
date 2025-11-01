@@ -4,9 +4,9 @@ services:
     container_name: sonarqube
     network_mode: host
     environment:
-      - SONAR_JDBC_URL=jdbc:postgresql://192.168.0.100:5433/sonar
-      - SONAR_JDBC_USERNAME=sonar
-      - SONAR_JDBC_PASSWORD=sonar
+      - SONAR_JDBC_URL=${SONAR_JDBC_URL}
+      - SONAR_JDBC_USERNAME=${SONAR_JDBC_USERNAME}
+      - SONAR_JDBC_PASSWORD=${SONAR_JDBC_PASSWORD}
       - SONAR_WEB_HOST=0.0.0.0
     volumes:
       - sonarqube_data:/opt/sonarqube/data
@@ -18,10 +18,10 @@ services:
     image: postgres:13
     container_name: postgresql
     ports:
-      - "5433:5432"
+      - "${SONAR_DB_PORT}:5432"
     environment:
-      - POSTGRES_USER=sonar
-      - POSTGRES_PASSWORD=sonar
+      - POSTGRES_USER=${SONAR_JDBC_USERNAME}
+      - POSTGRES_PASSWORD=${SONAR_JDBC_PASSWORD}
       - POSTGRES_DB=sonar
     volumes:
       - postgresql_data:/var/lib/postgresql/data
@@ -33,17 +33,17 @@ services:
     image: postgres:16
     container_name: postgres
     environment:
-      POSTGRES_DB: scheduleDB
-      POSTGRES_USER: cusolOficial
-      POSTGRES_PASSWORD: A4352k#_M
+      POSTGRES_DB: ${DB_NAME}
+      POSTGRES_USER: ${DB_USERNAME}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
     ports:
-      - "5432:5432"
+      - "${DB_PORT}:5432"
     volumes:
       - postgres-data:/var/lib/postgresql/data
     networks:
       - spring-network
     healthcheck:
-      test: [ "CMD-SHELL", "pg_isready -U cusolOficial -d scheduleDB" ]
+      test: [ "CMD-SHELL", "pg_isready -U ${DB_USERNAME} -d ${DB_NAME}" ]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -56,10 +56,18 @@ services:
       context: ./uis-schedule-system-backend/backend
       dockerfile: Dockerfile
     ports:
-      - "8080:8080"
+      - "${BACKEND_PORT}:8080"
     environment:
-      - SPRING_PROFILE=prod
-      - DB_HOST=postgres
+      - SPRING_PROFILE=${SPRING_PROFILE}
+      - DB_HOST=${DB_HOST}
+      - DB_PORT=${DB_PORT}
+      - DB_NAME=${DB_NAME}
+      - DB_USERNAME=${DB_USERNAME}
+      - DB_PASSWORD=${DB_PASSWORD}
+      - SECURITY_USER_NAME=${SECURITY_USER_NAME}
+      - SECURITY_USER_PASSWORD=${SECURITY_USER_PASSWORD}
+      - JWT_PRIVATE_KEY=${JWT_PRIVATE_KEY}
+      - JWT_USER_GENERATOR=${JWT_USER_GENERATOR}
     networks:
       - spring-network
     depends_on:
@@ -73,7 +81,7 @@ services:
       dockerfile: Dockerfile
     container_name: uis-schedule-frontend
     ports:
-      - "80:80"
+      - "${FRONTEND_PORT}:80"
     networks:
       - spring-network
     depends_on:
