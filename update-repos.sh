@@ -95,7 +95,7 @@ if [ -n "$REMOTE_COMMIT" ] && [ "$CURRENT_COMMIT" != "$REMOTE_COMMIT" ]; then
       sonar \
         -Dsonar.host.url=${SONAR_HOST_URL:-http://100.108.184.57:9000} \
         -Dsonar.token=${SONAR_FRONTEND_TOKEN} \
-        -Dsonar.projectKey=uis-schedule-system-frontend) >> "$LOGFILE" 2>&1 || \
+        -Dsonar.projectKey=Sistemas-de-horarios-Front) >> "$LOGFILE" 2>&1 || \
       log_warning "Frontend: análisis sonar falló (no crítico)"
   elif command -v sonar-scanner >/dev/null 2>&1; then
     log_info "Frontend: ejecutando análisis con sonar-scanner..."
