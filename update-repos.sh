@@ -1,6 +1,6 @@
 #!/bin/bash
 
-LOGFILE=/home/dev/proyects/update-repos.log
+LOGFILE=/home/dev/proyects/logs/update-repos.log
 
 # Cargar variables de entorno desde .env
 if [ -f /home/dev/proyects/.env ]; then
