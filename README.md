@@ -121,16 +121,51 @@ Consulta el archivo [SETUP_LOCAL.md](./SETUP_LOCAL.md) para instrucciones detall
 
 ## 🐳 Docker
 
-### Ejecutar con Docker Compose
+### Ejecutar con Docker Compose (RECOMENDADO: Usar el `docker-compose.yml` principal)
+
+Desde la raíz del repositorio, levanta todos los servicios con el `docker-compose.yml` principal:
 
 ```bash
-docker-compose up -d
+# Ejecutar en background
+docker compose up -d --build
+
+# Detener
+docker compose down
 ```
 
-Esto levantará:
+Esto levantará los servicios principales desde el `docker-compose.yml` de la raíz:
 - Backend en `http://localhost:8080`
-- Frontend en `http://localhost:4200`
+- Frontend en `http://localhost` (puerto 80)
+- Frontend de desarrollo (opcional) en `http://localhost:4200`
 - Base de datos PostgreSQL
+
+### 🧭 Troubleshooting (Errores y logs)
+
+- Verifica los logs de backend si obtienes `500 Internal Server Error` al hacer login:
+
+```bash
+docker compose logs -f backend-spring-api
+```
+
+- Verifica que la base de datos esté accesible y saludable:
+
+```bash
+docker compose logs -f postgres
+```
+
+- Si el backend tiene problemas con la conexión a la base de datos, revisa que `DB_HOST` esté configurado a `postgres` en `/home/dev/proyects/.env` y que las credenciales coincidan con el usuario del contenedor postgres.
+- Si observas problemas con esquemas o migraciones, revisa la configuración `spring.jpa.hibernate.ddl-auto` en `uis-schedule-system-backend/backend/src/main/resources` (ej.: `create-drop`, `update`, `validate`) y ajusta según el entorno de ejecución.
+
+
+Si deseas levantar un servicio de forma específica (por ejemplo solo backend):
+
+```bash
+docker compose up -d --build backend-spring-api
+```
+
+Notas:
+- El archivo `.env` en la raíz (`/home/dev/proyects/.env`) se usa para configurar las variables que consumen los servicios centrales.
+- Evita arrancar servicios desde los `docker-compose.yml` de los submódulos cuando trabajas localmente con la configuración del repositorio raíz, ya que puede generar inconsistencias en puertos y nombres de servicios (por ejemplo `DB_HOST`).
 
 ## 📚 Documentación de Submódulos
 

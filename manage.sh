@@ -37,7 +37,7 @@ show_menu() {
 start_all_docker() {
     echo "🚀 Iniciando todos los servicios con Docker..."
     cd "$SCRIPT_DIR" || exit 1
-    docker-compose up -d
+    docker compose up -d --build
     echo ""
     echo "⏳ Esperando a que los servicios estén listos..."
     sleep 20
@@ -53,16 +53,16 @@ start_all_docker() {
 stop_all_docker() {
     echo "🛑 Deteniendo todos los servicios..."
     cd "$SCRIPT_DIR" || exit 1
-    docker-compose down
+    docker compose down
     echo "✅ Todos los servicios detenidos"
 }
 
 rebuild_all() {
     echo "🔨 Reconstruyendo y reiniciando todos los servicios..."
     cd "$SCRIPT_DIR" || exit 1
-    docker-compose down
-    docker-compose build
-    docker-compose up -d
+    docker compose down
+    docker compose build
+    docker compose up -d --build
     echo ""
     echo "⏳ Esperando a que los servicios estén listos..."
     sleep 25
@@ -125,7 +125,7 @@ clean_all() {
     if [[ "$confirm" =~ ^[Ss]$ ]]; then
         echo "🧹 Limpiando todo..."
         cd "$SCRIPT_DIR" || exit 1
-        docker-compose down -v
+        docker compose down -v
         docker system prune -a -f
         echo "✅ Limpieza completada"
     else
