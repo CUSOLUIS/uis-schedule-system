@@ -2,6 +2,7 @@ services:
   sonarqube:
     image: sonarqube:community
     container_name: sonarqube
+    profiles: ["sonarqube"]
     network_mode: host
     environment:
       - SONAR_JDBC_URL=${SONAR_JDBC_URL}
@@ -17,6 +18,7 @@ services:
   db:
     image: postgres:13
     container_name: postgresql
+    profiles: ["sonarqube"]
     ports:
       - "${SONAR_DB_PORT}:5432"
     environment:
