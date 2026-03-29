@@ -1,0 +1,86 @@
+name: Build affected submodules
+
+on:
+  push:
+    paths:
+      - "**"
+  pull_request:
+    paths:
+      - "**"
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  detect-and-build:
+    runs-on: [self-hosted, linux, docker]
+    outputs:
+      services: ${{ steps.detect.outputs.services }}
+    steps:
+      - name: Checkout repository (with submodules)
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          submodules: recursive
+
+      - name: Detect changed files and affected services
+        id: detect
+        run: |
+          set -euo pipefail
+          # Determine base and head SHAs
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            BASE_SHA=${{ github.event.pull_request.base.sha }}
+            HEAD_SHA=${{ github.event.pull_request.head.sha }}
+          else
+            BASE_SHA=${{ github.event.before }}
+            HEAD_SHA=${{ github.sha }}
+          fi
+          # Fallback when base is empty
+          if [ -z "$BASE_SHA" ] || [ "$BASE_SHA" = "0000000000000000000000000000000000000000" ]; then
+            git fetch --no-tags --prune --unshallow || true
+            BASE_SHA=$(git rev-list --max-parents=0 HEAD)
+          fi
+          CHANGED_FILES=$(git diff --name-only "$BASE_SHA" "$HEAD_SHA" || true)
+          echo "Changed files:\n$CHANGED_FILES"
+          SERVICES=""
+          # Map changed paths to service keys (adjust these paths to match your repo layout)
+          if echo "$CHANGED_FILES" | grep -qE '^uis-schedule-system-backend/'; then
+            SERVICES+="backend,"
+          fi
+          if echo "$CHANGED_FILES" | grep -qE '^uis-schedule-system-frontend/'; then
+            SERVICES+="frontend,"
+          fi
+          # Remove trailing comma
+          SERVICES=${SERVICES%,}
+          echo "services=$SERVICES" >> "$GITHUB_OUTPUT"
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v2
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v2
+
+      - name: Build backend image (load into local Docker)
+        if: contains(steps.detect.outputs.services, 'backend')
+        uses: docker/build-push-action@v4
+        with:
+          context: ./uis-schedule-system-backend/backend
+          file: ./uis-schedule-system-backend/backend/Dockerfile
+          push: false
+          load: true
+          tags: uis-schedule-system-backend:ci-${{ github.sha }}
+
+      - name: Build frontend image (load into local Docker)
+        if: contains(steps.detect.outputs.services, 'frontend')
+        uses: docker/build-push-action@v4
+        with:
+          context: ./uis-schedule-system-frontend
+          file: ./uis-schedule-system-frontend/Dockerfile
+          push: false
+          load: true
+          tags: uis-schedule-system-frontend:ci-${{ github.sha }}
+
+      - name: Summary
+        run: |
+          echo "Built services: ${{ steps.detect.outputs.services }}"
