@@ -1,0 +1,55 @@
+name: CI/CD Pipeline (Self-Hosted on Raspberry Pi)
+
+on:
+  workflow_run:
+    workflows:
+      - "Build affected submodules"
+    types:
+      - completed
+
+jobs:
+  deploy-and-analyze:
+    if: ${{ github.event.workflow_run.conclusion == 'success' && (github.event.workflow_run.head_branch == 'main' || github.event.workflow_run.head_branch == 'develop') }}
+    runs-on: self-hosted
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          # Importante para SonarQube: necesita el historial completo para detectar código nuevo
+          fetch-depth: 0
+
+      - name: Prepare environment
+        run: |
+          echo "Ejecutando despliegue localmente en la Raspberry Pi"
+          # Asegurarse de que el usuario del runner tenga permisos para ejecutar docker
+          # sudo usermod -aG docker $USER
+
+      - name: Wait for built images (if applicable)
+        run: |
+          echo "Comprobando si las imágenes CI están disponibles localmente"
+          # Opcional: esperar hasta 60s para que las imágenes construidas estén disponibles
+          for i in {1..12}; do
+            if docker image inspect uis-schedule-system-backend:ci-${{ github.event.workflow_run.head_sha }} >/dev/null 2>&1 || docker image inspect uis-schedule-system-frontend:ci-${{ github.event.workflow_run.head_sha }} >/dev/null 2>&1; then
+              echo "Imágenes CI encontradas"
+              break
+            fi
+            echo "Esperando imágenes... ($i)"
+            sleep 5
+          done
+
+      - name: Deploy application (Frontend and Backend)
+        working-directory: ${{ github.workspace }}
+        run: |
+          # Detener contenedores existentes
+          docker compose down
+
+          # Si las imágenes CI están disponibles, levantar sin reconstruir
+          if docker image inspect uis-schedule-system-backend:ci-${{ github.event.workflow_run.head_sha }} >/dev/null 2>&1 || docker image inspect uis-schedule-system-frontend:ci-${{ github.event.workflow_run.head_sha }} >/dev/null 2>&1; then
+            echo "Usando imágenes CI locales"
+            docker compose up -d
+          else
+            echo "Imágenes CI no encontradas, reconstruyendo en Raspberry Pi"
+            docker compose up -d --build
+          fi
