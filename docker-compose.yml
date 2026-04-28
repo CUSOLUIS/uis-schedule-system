@@ -1,35 +1,35 @@
 services:
-  sonarqube:
-    image: sonarqube:community
-    container_name: sonarqube
-    profiles: ["sonarqube"]
-    network_mode: host
-    environment:
-      - SONAR_JDBC_URL=${SONAR_JDBC_URL}
-      - SONAR_JDBC_USERNAME=${SONAR_JDBC_USERNAME}
-      - SONAR_JDBC_PASSWORD=${SONAR_JDBC_PASSWORD}
-      - SONAR_WEB_HOST=0.0.0.0
-    volumes:
-      - sonarqube_data:/opt/sonarqube/data
-      - sonarqube_extensions:/opt/sonarqube/extensions
-      - sonarqube_logs:/opt/sonarqube/logs
-    restart: unless-stopped
+  # sonarqube:
+  #   image: sonarqube:community
+  #   container_name: sonarqube
+  #   profiles: ["sonarqube"]
+  #   network_mode: host
+  #   environment:
+  #     - SONAR_JDBC_URL=${SONAR_JDBC_URL}
+  #     - SONAR_JDBC_USERNAME=${SONAR_JDBC_USERNAME}
+  #     - SONAR_JDBC_PASSWORD=${SONAR_JDBC_PASSWORD}
+  #     - SONAR_WEB_HOST=0.0.0.0
+  #   volumes:
+  #     - sonarqube_data:/opt/sonarqube/data
+  #     - sonarqube_extensions:/opt/sonarqube/extensions
+  #     - sonarqube_logs:/opt/sonarqube/logs
+  #   restart: unless-stopped
 
-  db:
-    image: postgres:13
-    container_name: postgresql
-    profiles: ["sonarqube"]
-    ports:
-      - "${SONAR_DB_PORT}:5432"
-    environment:
-      - POSTGRES_USER=${SONAR_JDBC_USERNAME}
-      - POSTGRES_PASSWORD=${SONAR_JDBC_PASSWORD}
-      - POSTGRES_DB=sonar
-    volumes:
-      - postgresql_data:/var/lib/postgresql/data
-    networks:
-      - sonarnet
-    restart: unless-stopped
+  # db:
+  #   image: postgres:13
+  #   container_name: postgresql
+  #   profiles: ["sonarqube"]
+  #   ports:
+  #     - "${SONAR_DB_PORT}:5432"
+  #   environment:
+  #     - POSTGRES_USER=${SONAR_JDBC_USERNAME}
+  #     - POSTGRES_PASSWORD=${SONAR_JDBC_PASSWORD}
+  #     - POSTGRES_DB=sonar
+  #   volumes:
+  #     - postgresql_data:/var/lib/postgresql/data
+  #   networks:
+  #     - sonarnet
+  #   restart: unless-stopped
 
   postgres:
     image: postgres:16
@@ -42,10 +42,21 @@ services:
       - "${DB_PORT}:5432"
     volumes:
       - postgres-data:/var/lib/postgresql/data
+      - postgres-logs:/var/log/postgresql
+    command:
+      [
+        "postgres",
+        "-c",
+        "logging_collector=on",
+        "-c",
+        "log_directory=/var/log/postgresql",
+        "-c",
+        "log_filename=postgresql-%a.log",
+      ]
     networks:
       - spring-network
     healthcheck:
-      test: [ "CMD-SHELL", "pg_isready -U ${DB_USERNAME} -d ${DB_NAME}" ]
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USERNAME} -d ${DB_NAME}"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -71,6 +82,10 @@ services:
       - JWT_PRIVATE_KEY=${JWT_PRIVATE_KEY}
       - JWT_USER_GENERATOR=${JWT_USER_GENERATOR}
       - CORS_ALLOWED_ORIGINS=${CORS_ALLOWED_ORIGINS}
+      - CORS_ALLOWED_METHODS=${CORS_ALLOWED_METHODS}
+      - INVITATION_BASE_URL=${INVITATION_BASE_URL}
+      - MAIL_USERNAME=${MAIL_USERNAME}
+      - MAIL_PASSWORD=${MAIL_PASSWORD}
     networks:
       - spring-network
     depends_on:
@@ -83,24 +98,38 @@ services:
       context: ./uis-schedule-system-frontend
       dockerfile: Dockerfile
     container_name: uis-schedule-frontend
-    ports:
-      - "${FRONTEND_PORT}:80"
     networks:
       - spring-network
     depends_on:
       - backend-spring-api
     restart: unless-stopped
 
+  nginx-gateway:
+    image: nginx:alpine
+    container_name: nginx-gateway
+    ports:
+      - "80:80"
+      - "4200:4200"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+    networks:
+      - spring-network
+    depends_on:
+      - frontend
+      - backend-spring-api
+    restart: unless-stopped
+
   frontend-dev:
     image: node:20-alpine
     container_name: uis-schedule-frontend-dev
-    network_mode: host
     working_dir: /app
-    command: sh -c "npm install && npm run start -- --host 0.0.0.0 --proxy-config proxy.conf.json"
+    command: sh -c "npm install && npm run start -- --host 0.0.0.0"
     volumes:
       - ./uis-schedule-system-frontend:/app
     environment:
       - NODE_ENV=development
+    networks:
+      - spring-network
     restart: unless-stopped
     depends_on:
       - backend-spring-api
@@ -111,7 +140,7 @@ volumes:
   sonarqube_logs:
   postgresql_data:
   postgres-data:
-
+  postgres-logs:
 
 networks:
   sonarnet:
