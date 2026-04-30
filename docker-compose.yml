@@ -1,4 +1,4 @@
- # version: '3.8' # not required by newer Compose, removed to avoid warnings
+# version: '3.8' # not required by newer Compose, removed to avoid warnings
 ###############################
 # Compose centralizado (raíz)
 # Use este docker-compose.yml en la raíz para levantar TODOS los servicios
@@ -134,8 +134,8 @@ services:
     container_name: uis-schedule-frontend-dev
     networks:
       - spring-network
-    ports:
-      - "4200:4200"
+    expose:
+      - "4200"
     working_dir: /app
     command: sh -c "npm install && npm run start -- --host 0.0.0.0 --port 4200 --proxy-config proxy.conf.json"
     volumes:
