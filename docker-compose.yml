@@ -142,8 +142,6 @@ services:
       - ./uis-schedule-system-frontend:/app
     environment:
       - NODE_ENV=development
-    networks:
-      - spring-network
     restart: unless-stopped
     depends_on:
       - backend-spring-api
