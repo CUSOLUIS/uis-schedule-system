@@ -1,164 +1,143 @@
 #!/bin/bash
 
-LOGFILE=/home/dev/proyects/logs/update-repos.log
+# --- CONFIGURACIÓN DE RUTAS ---
+BASE_DIR="/home/dev/proyects"
+LOGFILE="$BASE_DIR/logs/update-repos.log"
+BACKEND_DIR="$BASE_DIR/uis-schedule-system-backend"
+FRONTEND_DIR="$BASE_DIR/uis-schedule-system-frontend"
 
-# Cargar variables de entorno desde .env
-if [ -f /home/dev/proyects/.env ]; then
-  export $(grep -v '^#' /home/dev/proyects/.env | xargs)
-fi
-
-# Rota los logs: si el archivo supera 10MB, comprime y mantiene máximo 4 comprimidos + 1 normal
+# --- ROTACIÓN DE LOGS ---
+# Si el archivo supera 10MB, rota y mantiene histórico
 if [ -f "$LOGFILE" ] && [ $(stat -c%s "$LOGFILE" 2>/dev/null || echo 0) -gt 10485760 ]; then
-    gzip "$LOGFILE"
     for i in {3..1}; do
-        if [ -f "${LOGFILE}.${i}.gz" ]; then
-            mv "${LOGFILE}.${i}.gz" "${LOGFILE}.$((i+1)).gz"
-        fi
+        [ -f "${LOGFILE}.${i}.gz" ] && mv "${LOGFILE}.${i}.gz" "${LOGFILE}.$((i+1)).gz"
     done
-    mv "${LOGFILE}.gz" "${LOGFILE}.1.gz"
-    if [ -f "${LOGFILE}.5.gz" ]; then
-        rm "${LOGFILE}.5.gz"
-    fi
+    gzip -c "$LOGFILE" > "${LOGFILE}.1.gz" && > "$LOGFILE"
+    [ -f "${LOGFILE}.5.gz" ] && rm "${LOGFILE}.5.gz"
 fi
 
-# Define funciones de logging
+# --- FUNCIONES DE LOGGING ---
 LOG_BUFFER=""
 log_info() {
-    local DATE=$(date '+%Y-%m-%d %H:%M:%S')
-    LOG_BUFFER+="[$DATE] [INFO] $*\n"
+    local MSG="[$(date '+%Y-%m-%d %H:%M:%S')] [INFO] $*"
+    LOG_BUFFER+="$MSG\n"
+    echo "$MSG" # Salida en tiempo real para debug manual
 }
 
 log_error() {
-    local DATE=$(date '+%Y-%m-%d %H:%M:%S')
-    LOG_BUFFER+="[$DATE] [ERROR] $*\n"
+    local MSG="[$(date '+%Y-%m-%d %H:%M:%S')] [ERROR] $*"
+    LOG_BUFFER+="$MSG\n"
+    echo "$MSG" >&2
 }
 
 log_warning() {
-    local DATE=$(date '+%Y-%m-%d %H:%M:%S')
-    LOG_BUFFER+="[$DATE] [WARNING] $*\n"
+    local MSG="[$(date '+%Y-%m-%d %H:%M:%S')] [WARNING] $*"
+    LOG_BUFFER+="$MSG\n"
+    echo "$MSG"
 }
 
-# Verificar cambios en el backend
-cd /home/dev/proyects/uis-schedule-system-backend || exit
-log_info "Backend: verificando cambios remotos..."
+# --- INICIO DEL PROCESO ---
+log_info "=== Iniciando proceso de actualización ==="
+
+# 1. CARGAR VARIABLES DE ENTORNO
+if [ -f "$BASE_DIR/.env" ]; then
+    export $(grep -v '^#' "$BASE_DIR/.env" | xargs)
+    log_info "Variables de entorno cargadas desde .env"
+else
+    log_warning "Archivo .env no encontrado en $BASE_DIR"
+fi
+
+# 2. ACTUALIZAR REPOSITORIO PRINCIPAL (ROOT)
+cd "$BASE_DIR" || exit
+log_info "Main Repo: Verificando cambios en el root..."
+git fetch origin >> "$LOGFILE" 2>&1 || log_error "Main Repo: Error en git fetch"
+
+MAIN_CURRENT=$(git rev-parse HEAD)
+MAIN_REMOTE=$(git rev-parse origin/$(git branch --show-current) 2>/dev/null)
+
+if [ "$MAIN_CURRENT" != "$MAIN_REMOTE" ]; then
+    log_info "Main Repo: Cambios detectados en el root. Actualizando..."
+    git pull origin $(git branch --show-current) >> "$LOGFILE" 2>&1 || log_error "Main Repo: Error en git pull"
+fi
+
+# 3. VERIFICAR BACKEND (SUBMÓDULO)
+cd "$BACKEND_DIR" || exit
+log_info "Backend: Verificando cambios..."
 git fetch origin >> "$LOGFILE" 2>&1 || log_error "Backend: error en git fetch"
 
-CURRENT_COMMIT=$(git rev-parse HEAD)
-REMOTE_COMMIT=$(git rev-parse origin/develop 2>/dev/null || echo "")
+BE_CURRENT=$(git rev-parse HEAD)
+BE_REMOTE=$(git rev-parse origin/develop 2>/dev/null || echo "")
 
-if [ -n "$REMOTE_COMMIT" ] && [ "$CURRENT_COMMIT" != "$REMOTE_COMMIT" ]; then
-  log_info "Backend: cambios detectados, haciendo pull..."
-  git pull origin develop >> "$LOGFILE" 2>&1 || log_error "Backend: error en git pull"
-  
-  cd backend || exit
-  log_info "Backend: compilando proyecto..."
-  mvn compile -Dmaven.compiler.release=17 -q >> "$LOGFILE" 2>&1 || log_error "Backend: error en mvn compile"
-  cd .. || exit
-  
-  if command -v sonar-scanner >/dev/null 2>&1; then
-    log_info "Backend: ejecutando análisis SonarQube..."
-    sonar-scanner \
-      -Dsonar.projectKey=uis-schedule-system-backend \
-      -Dsonar.sources=backend/src/main/java \
-      -Dsonar.java.binaries=backend/target/classes \
-      -Dsonar.host.url=${SONAR_HOST_URL:-http://100.108.184.57:9000} \
-      -Dsonar.token=${SONAR_BACKEND_TOKEN} >> "$LOGFILE" 2>&1 || \
-      log_warning "Backend: análisis SonarQube falló (no crítico)"
-  else
-    log_warning "Backend: sonar-scanner no está disponible; omitiendo análisis."
-  fi
-  
-  BACKEND_UPDATED=true
+if [ -n "$BE_REMOTE" ] && [ "$BE_CURRENT" != "$BE_REMOTE" ]; then
+    log_info "Backend: Cambios detectados, haciendo pull..."
+    git pull origin develop >> "$LOGFILE" 2>&1 || log_error "Backend: error en git pull"
+
+    # Compilación (Asumiendo estructura Spring Boot)
+    if [ -d "backend" ]; then cd backend; fi
+    log_info "Backend: Compilando proyecto con Maven..."
+    mvn compile -Dmaven.compiler.release=17 -q >> "$LOGFILE" 2>&1 || log_error "Backend: error en mvn compile"
+    [ -d "../backend" ] && cd ..
+
+    # Analíticas SonarQube Backend
+    if command -v sonar-scanner >/dev/null 2>&1; then
+        log_info "Backend: Ejecutando análisis SonarQube..."
+        sonar-scanner \
+            -Dsonar.projectKey=uis-schedule-system-backend \
+            -Dsonar.sources=backend/src/main/java \
+            -Dsonar.java.binaries=backend/target/classes \
+            -Dsonar.host.url=${SONAR_HOST_URL:-http://100.108.184.57:9000} \
+            -Dsonar.token=${SONAR_BACKEND_TOKEN} >> "$LOGFILE" 2>&1 || log_warning "Backend: Sonar falló"
+    fi
+    BACKEND_UPDATED=true
 fi
 
-# Verificar cambios en el frontend
-cd /home/dev/proyects/uis-schedule-system-frontend || exit
-log_info "Frontend: verificando cambios remotos..."
+# 4. VERIFICAR FRONTEND (SUBMÓDULO)
+cd "$FRONTEND_DIR" || exit
+log_info "Frontend: Verificando cambios..."
 git fetch origin >> "$LOGFILE" 2>&1 || log_error "Frontend: error en git fetch"
 
-CURRENT_COMMIT=$(git rev-parse HEAD)
-REMOTE_COMMIT=$(git rev-parse origin/develop 2>/dev/null || echo "")
+FE_CURRENT=$(git rev-parse HEAD)
+FE_REMOTE=$(git rev-parse origin/develop 2>/dev/null || echo "")
 
-if [ -n "$REMOTE_COMMIT" ] && [ "$CURRENT_COMMIT" != "$REMOTE_COMMIT" ]; then
-  log_info "Frontend: cambios detectados, haciendo pull..."
-  git pull origin develop >> "$LOGFILE" 2>&1 || log_error "Frontend: error en git pull"
-  
-  log_info "Frontend: instalando dependencias..."
-  npm install --silent >> "$LOGFILE" 2>&1 || log_error "Frontend: error en npm install"
-  
-  log_info "Frontend: compilando aplicación..."
-  npm run build --silent >> "$LOGFILE" 2>&1 || log_error "Frontend: error en npm run build"
-  
-  if command -v sonar >/dev/null 2>&1; then
-    log_info "Frontend: ejecutando análisis con sonar..."
-    (cd /home/dev/proyects/uis-schedule-system-frontend && \
-      sonar \
-        -Dsonar.host.url=${SONAR_HOST_URL:-http://100.108.184.57:9000} \
-        -Dsonar.token=${SONAR_FRONTEND_TOKEN} \
-        -Dsonar.projectKey=Sistemas-de-horarios-Front) >> "$LOGFILE" 2>&1 || \
-      log_warning "Frontend: análisis sonar falló (no crítico)"
-  elif command -v sonar-scanner >/dev/null 2>&1; then
-    log_info "Frontend: ejecutando análisis con sonar-scanner..."
-    (cd /home/dev/proyects/uis-schedule-system-frontend && \
-      sonar-scanner \
-        -Dsonar.host.url=${SONAR_HOST_URL:-http://100.108.184.57:9000} \
-        -Dsonar.login=${SONAR_FRONTEND_TOKEN} \
-        -Dsonar.projectKey=uis-schedule-system-frontend) >> "$LOGFILE" 2>&1 || \
-      log_warning "Frontend: análisis sonar-scanner falló (no crítico)"
-  elif command -v docker >/dev/null 2>&1; then
-    log_info "Frontend: ejecutando análisis con Docker..."
-    (cd /home/dev/proyects/uis-schedule-system-frontend && \
-      docker run --rm -v "$PWD":/usr/src -w /usr/src sonarsource/sonar-scanner-cli \
-        -Dsonar.host.url=${SONAR_HOST_URL:-http://100.108.184.57:9000} \
-        -Dsonar.login=${SONAR_FRONTEND_TOKEN} \
-        -Dsonar.projectKey=uis-schedule-system-frontend) >> "$LOGFILE" 2>&1 || \
-      log_warning "Frontend: análisis Sonar via Docker falló (no crítico)"
-  else
-    log_warning "Frontend: ningún escáner Sonar disponible; omitiendo análisis."
-  fi
-  
-  FRONTEND_UPDATED=true
+if [ -n "$FE_REMOTE" ] && [ "$FE_CURRENT" != "$FE_REMOTE" ]; then
+    log_info "Frontend: Cambios detectados, haciendo pull..."
+    git pull origin develop >> "$LOGFILE" 2>&1 || log_error "Frontend: error en git pull"
+
+    log_info "Frontend: Instalando dependencias y build..."
+    npm install --silent >> "$LOGFILE" 2>&1 && npm run build --silent >> "$LOGFILE" 2>&1 || log_error "Frontend: Error en build"
+
+    # Analíticas SonarQube Frontend
+    if command -v sonar-scanner >/dev/null 2>&1; then
+        log_info "Frontend: Ejecutando análisis SonarQube..."
+        sonar-scanner \
+            -Dsonar.host.url=${SONAR_HOST_URL:-http://100.108.184.57:9000} \
+            -Dsonar.token=${SONAR_FRONTEND_TOKEN} \
+            -Dsonar.projectKey=uis-schedule-system-frontend >> "$LOGFILE" 2>&1 || log_warning "Frontend: Sonar falló"
+    fi
+    FRONTEND_UPDATED=true
 fi
 
-# Si hubo cambios en backend o frontend, reconstruir y relanzar servicios específicos
+# 5. REINICIO DE SERVICIOS DOCKER
 if [ "$BACKEND_UPDATED" = true ] || [ "$FRONTEND_UPDATED" = true ]; then
-  cd /home/dev/proyects || exit
-  
-  if command -v docker-compose >/dev/null 2>&1 || command -v docker >/dev/null 2>&1; then
-    SERVICES_TO_RESTART=""
-    
-    if [ "$BACKEND_UPDATED" = true ]; then
-      SERVICES_TO_RESTART="$SERVICES_TO_RESTART backend-spring-api"
+    cd "$BASE_DIR" || exit
+
+    SERVICES=""
+    [ "$BACKEND_UPDATED" = true ] && SERVICES+=" backend-spring-api"
+    [ "$FRONTEND_UPDATED" = true ] && SERVICES+=" frontend"
+
+    if [ -n "$SERVICES" ]; then
+        log_info "Docker: Reconstruyendo servicios:$SERVICES"
+        docker-compose stop $SERVICES >> "$LOGFILE" 2>&1
+        docker-compose rm -f $SERVICES >> "$LOGFILE" 2>&1
+        docker-compose build --no-cache $SERVICES >> "$LOGFILE" 2>&1
+        docker-compose up -d $SERVICES >> "$LOGFILE" 2>&1
+
+        # Actualizar punteros de submódulos en el repo principal
+        git add uis-schedule-system-backend uis-schedule-system-frontend >> "$LOGFILE" 2>&1
+        log_info "Git: Referencias de submódulos actualizadas en el root."
     fi
-    
-    if [ "$FRONTEND_UPDATED" = true ]; then
-      SERVICES_TO_RESTART="$SERVICES_TO_RESTART frontend"
-    fi
-    
-    if [ -n "$SERVICES_TO_RESTART" ]; then
-      log_info "Reconstruyendo y relanzando servicios:$SERVICES_TO_RESTART"
-      docker-compose stop $SERVICES_TO_RESTART >> "$LOGFILE" 2>&1 || log_warning "Advertencia al detener servicios"
-      docker-compose rm -f $SERVICES_TO_RESTART >> "$LOGFILE" 2>&1 || log_warning "Advertencia al eliminar contenedores"
-      docker-compose build --no-cache $SERVICES_TO_RESTART >> "$LOGFILE" 2>&1 || log_warning "Advertencia al construir servicios"
-      docker-compose up -d $SERVICES_TO_RESTART >> "$LOGFILE" 2>&1 || log_warning "Advertencia al lanzar servicios"
-    fi
-  else
-    log_warning "Docker no está disponible; omitiendo reconstrucción."
-  fi
-  
-  # Actualizar referencias de submódulos en el repositorio principal
-  cd /home/dev/proyects || exit
-  if [ "$BACKEND_UPDATED" = true ]; then
-    git add uis-schedule-system-backend >> "$LOGFILE" 2>&1
-    log_info "Referencia del submódulo backend actualizada"
-  fi
-  if [ "$FRONTEND_UPDATED" = true ]; then
-    git add uis-schedule-system-frontend >> "$LOGFILE" 2>&1
-    log_info "Referencia del submódulo frontend actualizada"
-  fi
 fi
 
-if [ -n "$LOG_BUFFER" ]; then
-  echo -e "$LOG_BUFFER" >> "$LOGFILE"
-  echo "" >> "$LOGFILE"
-fi
+# ESCRIBIR BUFFER AL LOG Y FINALIZAR
+echo -e "$LOG_BUFFER" >> "$LOGFILE"
+log_info "=== Proceso finalizado correctamente ==="
