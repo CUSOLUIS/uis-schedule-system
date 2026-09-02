@@ -21,3 +21,7 @@ Thumbs.db
 # Temporal files
 *.tmp
 *.bak
+
+# Respaldos de base de datos (scripts/db-backup.sh)
+backups/
+

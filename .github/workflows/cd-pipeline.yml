@@ -39,6 +39,10 @@ jobs:
             sleep 5
           done
 
+      - name: Backup scheduleDB antes de desplegar
+        working-directory: ${{ github.workspace }}
+        run: ./scripts/db-backup.sh
+
       - name: Deploy application (Frontend and Backend)
         working-directory: ${{ github.workspace }}
         run: |
