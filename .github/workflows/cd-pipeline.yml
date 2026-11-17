@@ -39,12 +39,6 @@ jobs:
             sleep 5
           done
 
-      # Respalda siempre antes de bajar los contenedores. El destino por defecto
-      # (/home/dev/backups/scheduleDB) queda fuera del checkout, que se limpia en cada ejecución.
-      - name: Backup scheduleDB antes de desplegar
-        working-directory: ${{ github.workspace }}
-        run: ./scripts/db-backup.sh
-
       - name: Deploy application (Frontend and Backend)
         working-directory: ${{ github.workspace }}
         run: |

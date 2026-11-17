@@ -4,18 +4,24 @@ Procedimiento para respaldar la base `scheduleDB` (PostgreSQL 16, contenedor `po
 
 | Script | Uso |
 | --- | --- |
-| `scripts/db-backup.sh` | Genera un respaldo verificado. Lo ejecutan los despliegues y también se puede correr a mano. |
+| `scripts/db-backup.sh` | Genera un respaldo verificado. Lo ejecuta el deploy del backend y también se puede correr a mano. |
 | `scripts/db-restore.sh` | Restaura un respaldo en un destino explícito. Solo se usa a mano. |
 | `scripts/tests/test-db-scripts.sh` | Pruebas de ambos scripts, sin Docker real. |
 
 ## 1. Respaldo
 
-### Automático
+### Cuándo se respalda
 
-- **Backend** (`uis-schedule-system-backend/.github/workflows/deploy.yml`): antes de actualizar la carpeta de despliegue y reconstruir `backend-spring-api`, el paso *Backup scheduleDB antes de reconstruir* ejecuta `scripts/db-backup.sh` del repo raíz. La ruta se calcula desde el submódulo.
-- **Raíz** (`.github/workflows/cd-pipeline.yml`): el paso *Backup scheduleDB antes de desplegar* se ejecuta antes de `docker compose down`.
+Cada repo dispara solo sus propios workflows; un push en un submódulo no ejecuta nada en la raíz, ni al revés.
 
-Los dos pasos se ejecutan en cada despliegue, sin depender de si hay migraciones nuevas. Así, un reintento después de un despliegue fallido también deja su copia. Si el respaldo falla, el despliegue se detiene.
+| Cambio | Qué pasa en el servidor | Respaldo |
+| --- | --- | --- |
+| Push a `develop` del backend | `Deploy Backend` (runner `backend-pi`) actualiza `/home/dev/proyects/uis-schedule-system-backend` y reconstruye `backend-spring-api`; Flyway aplica las migraciones al arrancar. | **Automático**, en cada deploy, antes de actualizar la carpeta. |
+| Push a `develop` del frontend | `Deploy Frontend` (runner `frontend-pi`) reconstruye solo `frontend`. | No hace falta: no toca la base. |
+| Cambio en la raíz (`docker-compose.yml`, nginx, scripts) | Nada automático: se aplica con `git pull` en `/home/dev/proyects`. | **Manual**, antes de aplicar el cambio. |
+| `manage.sh` u otro comando que baje o recree contenedores o volúmenes | Lo ejecuta una persona en el servidor. | **Manual**, antes de ejecutarlo. |
+
+El paso automático del backend (*Backup scheduleDB antes de reconstruir*, en `uis-schedule-system-backend/.github/workflows/deploy.yml`) ejecuta `scripts/db-backup.sh` del repo raíz, que ubica desde el submódulo. Corre siempre, sin depender de si hay migraciones nuevas, así que un reintento después de un deploy fallido también deja copia. Si el respaldo falla, el deploy se detiene. Por eso, después de integrar cambios en `scripts/`, hay que hacer `git pull` en `/home/dev/proyects`.
 
 ### Manual
 
@@ -26,7 +32,7 @@ cd /home/dev/proyects
 
 | Variable | Por defecto | Para qué sirve |
 | --- | --- | --- |
-| `BACKUP_DIR` | `/home/dev/backups/scheduleDB` | Carpeta de los respaldos. Debe quedar fuera del volumen de PostgreSQL y de los checkouts del runner, porque estos se limpian en cada ejecución. |
+| `BACKUP_DIR` | `/home/dev/backups/scheduleDB` | Carpeta de los respaldos. Debe quedar fuera del volumen de PostgreSQL y de los checkouts del runner, porque estos se limpian en cada ejecución. La rotación solo actúa sobre esta carpeta. |
 | `BACKUP_RETENTION` | `7` | Cantidad de respaldos que se conservan. |
 | `ENV_FILE` | `.env` de la raíz o `uis-schedule-system-backend/backend/.env` | Se leen solo `DB_NAME` y `DB_USERNAME`. Si no existe, se usan `POSTGRES_DB` y `POSTGRES_USER` del contenedor. |
 | `DB_CONTAINER` | `postgres` | Contenedor que se respalda. |
@@ -111,6 +117,13 @@ docker compose restart backend-spring-api
 ## 5. Registro de evidencia
 
 Cada respaldo custodiado y cada prueba de restauración se registran en la HU de Taiga con estos datos. No se adjunta el archivo ni su contenido.
+
+El respaldo de custodia no se deja en la carpeta automática: con un respaldo por deploy y una retención de 7, la rotación lo borraría en pocos días. Se genera en una carpeta propia, que no rota:
+
+```bash
+cd /home/dev/proyects
+BACKUP_DIR=/home/dev/backups/custodia ./scripts/db-backup.sh
+```
 
 | Campo | Valor |
 | --- | --- |
