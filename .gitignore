@@ -21,3 +21,6 @@ Thumbs.db
 # Temporal files
 *.tmp
 *.bak
+
+# Respaldos de la base si se generan con un BACKUP_DIR dentro del repo
+backups/
